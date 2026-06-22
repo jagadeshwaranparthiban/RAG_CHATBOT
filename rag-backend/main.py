@@ -33,6 +33,7 @@ app.add_middleware(
 qdrant = QdrantClient(url=settings.qdrant_url)
 groq_client = Groq(api_key=settings.groq_api_key)
 
+SPARSE_MODEL = "Qdrant/bm25"
 
 @app.get("/health")
 def health_check():
@@ -131,14 +132,24 @@ def chunk_text(text: str, chunk_size: int = 800, overlap: int = 150) -> List[str
 
 def ensure_collection() -> None:
     """Creates the Qdrant collection on first use, sized to match whichever
-    embedding model is configured, instead of a hardcoded vector size."""
+    embedding model is configured, instead of a hardcoded vector size.
+    Hybrid search implemented - Now it has two named fields — 'dense' for 
+    semantic similarity and 'sparse' for BM25 keyword matching"""
+
     if not qdrant.collection_exists(settings.qdrant_collection):
         vector_size = qdrant.get_embedding_size(settings.embedding_model)
         qdrant.create_collection(
             collection_name=settings.qdrant_collection,
-            vectors_config=models.VectorParams(
-                size=vector_size, distance=models.Distance.COSINE
-            ),
+            vectors_config={
+                "dense": models.VectorParams(
+                    size=vector_size, distance=models.Distance.COSINE
+                )
+            },
+            sparse_vectors_config={
+                "sparse": models.SparseVectorParams(
+                    modifier=models.Modifier.IDF
+                )
+            },
         )
 
 
@@ -178,7 +189,14 @@ async def ingest(files: List[UploadFile] = File(...)):
         points = [
             models.PointStruct(
                 id=str(uuid4()),
-                vector=models.Document(text=chunk, model=settings.embedding_model),
+                vector={
+                    "dense": models.Document(
+                        text=chunk, model=settings.embedding_model
+                    ),
+                    "sparse": models.Document(
+                        text=chunk, model=SPARSE_MODEL
+                    ),
+                },
                 payload={
                     "text": chunk,
                     "source": upload.filename,
@@ -217,10 +235,29 @@ SYSTEM_PROMPT = (
 def search_chunks(question: str, top_k: int) -> List[dict]:
     """Embeds the question (via the same FastEmbed model used at ingest
     time) and returns the top_k most similar chunks from Qdrant, each with
-    its source filename, position, and similarity score."""
+    its source filename, position, and similarity score. Hybrid search
+    is used - Now it uses two Prefetch queries — one against the 'dense'
+    space and one against the 'sparse' space"""
+
     results = qdrant.query_points(
         collection_name=settings.qdrant_collection,
-        query=models.Document(text=question, model=settings.embedding_model),
+        prefetch=[
+            models.Prefetch(
+                query=models.Document(
+                    text=question, model=settings.embedding_model
+                ),
+                using="dense",
+                limit=top_k * 4,
+            ),
+            models.Prefetch(
+                query=models.Document(
+                    text=question, model=SPARSE_MODEL
+                ),
+                using="sparse",
+                limit=top_k * 4,
+            ),
+        ],
+        query=models.FusionQuery(fusion=models.Fusion.RRF),
         limit=top_k,
     ).points
 
