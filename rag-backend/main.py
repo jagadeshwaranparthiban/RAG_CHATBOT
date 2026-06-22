@@ -15,11 +15,12 @@ from config import settings
 
 app = FastAPI(title="RAG Backend", version="0.1.0")
 
+frontend_base_url = settings.frontend_url
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:3000",
-        "http://localhost:5173"
+        frontend_base_url
     ],
     allow_credentials=True,
     allow_methods=["*"],
