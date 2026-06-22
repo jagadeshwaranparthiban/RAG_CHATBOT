@@ -1,0 +1,73 @@
+# Environment files
+.env
+*.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+env/
+venv/
+.venv/
+pip-wheel-metadata/
+.pytest_cache/
+.mypy_cache/
+.pyre/
+htmlcov/
+.coverage
+coverage.xml
+dist/
+build/
+.eggs/
+*.egg-info/
+*.egg
+*.manifest
+*.spec
+
+# Qdrant runtime storage
+qdrant_storage/
+rag-backend/qdrant_storage/
+
+# Node / frontend
+rag-frontend/node_modules/
+rag-frontend/dist/
+rag-frontend/build/
+rag-frontend/.vite/
+rag-frontend/npm-debug.log*
+rag-frontend/yarn-debug.log*
+rag-frontend/yarn-error.log*
+rag-frontend/pnpm-debug.log*
+rag-frontend/package-lock.json
+rag-frontend/.env
+
+# Docker
+docker-compose.override.yml
+Dockerfile
+Dockerfile.*
+
+# IDE/editor
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+logs/
+log/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.bak
+*.swp
+*.swo

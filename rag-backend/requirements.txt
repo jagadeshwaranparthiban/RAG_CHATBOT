@@ -1,0 +1,8 @@
+fastapi
+uvicorn[standard]
+python-multipart
+python-dotenv
+groq
+qdrant-client[fastembed]
+pypdf
+python-docx

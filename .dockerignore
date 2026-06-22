@@ -1,0 +1,14 @@
+rag-backend/venv/
+rag-backend/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+build/
+dist/
+rag-backend/qdrant_storage/
+rag-backend/.DS_Store
+.env
+.git
+.gitignore
