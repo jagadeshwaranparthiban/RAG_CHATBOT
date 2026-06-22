@@ -7,6 +7,9 @@ import docx
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from groq import Groq, GroqError
+from PIL import Image
+import fitz
+import pytesseract
 from pydantic import BaseModel
 from pypdf import PdfReader
 from qdrant_client import QdrantClient, models
@@ -14,7 +17,6 @@ from qdrant_client import QdrantClient, models
 from config import settings
 
 app = FastAPI(title="RAG Backend", version="0.1.0")
-
 frontend_base_url = settings.frontend_url
 
 app.add_middleware(
@@ -41,24 +43,68 @@ def health_check():
         "qdrant_url": settings.qdrant_url,
     }
 
+IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg"}
+MIN_TEXT_LENGTH_PER_PAGE = 10
+ 
+ 
+def ocr_image_bytes(image_bytes: bytes) -> str:
+    """Runs OCR on raw image bytes and returns the recognized text."""
+    image = Image.open(io.BytesIO(image_bytes))
+    return pytesseract.image_to_string(image)
+ 
+ 
+def ocr_pdf_page(page: fitz.Page) -> str:
+    """Rasterizes a single PDF page to an image and runs OCR on it. Used as
+    a fallback for pages that have no extractable text layer, e.g. a page
+    that's really just a scanned image of a document."""
+    pixmap = page.get_pixmap(dpi=300)
+    image = Image.open(io.BytesIO(pixmap.tobytes("png")))
+    return pytesseract.image_to_string(image)
+
 
 def read_file_text(filename: str, content: bytes) -> str:
-    """Extracts plain text from a PDF, DOCX, or TXT file's raw bytes."""
+    """Extracts plain text from a PDF, DOCX, TXT, or image file's raw bytes.
+ 
+    For PDFs, each page is checked individually: if pypdf finds a real text
+    layer, that's used (fast, accurate). If a page comes back empty or
+    near-empty, it's assumed to be a scanned image and gets OCR'd instead.
+    This means a PDF with some normal pages and some scanned pages (e.g. a
+    signed contract with one scanned signature page) is handled correctly
+    without OCR'ing pages that didn't need it.
+    """
     extension = Path(filename).suffix.lower()
-
+ 
     if extension == ".txt":
         return content.decode("utf-8", errors="replace")
-
+ 
+    if extension in IMAGE_EXTENSIONS:
+        return ocr_image_bytes(content)
+ 
     if extension == ".pdf":
         reader = PdfReader(io.BytesIO(content))
-        pages = [page.extract_text() or "" for page in reader.pages]
+        ocr_doc = None 
+        pages = []
+ 
+        for page_number, page in enumerate(reader.pages):
+            text = page.extract_text() or ""
+ 
+            if len(text.strip()) < MIN_TEXT_LENGTH_PER_PAGE:
+                if ocr_doc is None:
+                    ocr_doc = fitz.open(stream=content, filetype="pdf")
+                text = ocr_pdf_page(ocr_doc[page_number])
+ 
+            pages.append(text)
+ 
+        if ocr_doc is not None:
+            ocr_doc.close()
+ 
         return "\n\n".join(pages)
-
+ 
     if extension == ".docx":
         document = docx.Document(io.BytesIO(content))
         paragraphs = [paragraph.text for paragraph in document.paragraphs]
         return "\n".join(paragraphs)
-
+ 
     raise HTTPException(status_code=400, detail=f"Unsupported file type: {filename}")
 
 

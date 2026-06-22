@@ -6,3 +6,6 @@ groq
 qdrant-client[fastembed]
 pypdf
 python-docx
+pytesseract
+pymupdf
+pillow
