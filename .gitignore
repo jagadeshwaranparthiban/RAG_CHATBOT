@@ -45,6 +45,7 @@ rag-frontend/.env
 docker-compose.override.yml
 Dockerfile
 Dockerfile.*
+actions-runner/
 
 # IDE/editor
 .vscode/
