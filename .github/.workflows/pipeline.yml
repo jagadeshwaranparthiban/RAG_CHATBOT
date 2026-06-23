@@ -46,7 +46,7 @@ jobs:
         # anyway, so the value is never actually used.
         working-directory: ./rag-backend
         env:
-          GROQ_API_KEY: dummy-key-for-ci
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           QDRANT_URL: http://localhost:6333
         run: pytest -v
 
