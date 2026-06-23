@@ -1,0 +1,15 @@
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Suppress the starlette/httpx deprecation warning that comes from the
+# version of fastapi installed — it's a test-runner cosmetic issue, not
+# a code bug, and would clutter CI output unnecessarily.
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+# E = pycodestyle errors, F = pyflakes, I = isort
+select = ["E", "F", "I"]
+# E501 = line too long (ruff's formatter handles this separately)
+ignore = ["E501"]

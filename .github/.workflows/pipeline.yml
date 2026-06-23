@@ -1,0 +1,107 @@
+name: CI / CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ──────────────────────────────────────────────────────────────────────────
+  # CI — runs on every push and every pull request
+  # Uses a GitHub-hosted runner (free, always clean, no setup on your end)
+  # ──────────────────────────────────────────────────────────────────────────
+  ci:
+    name: Lint & Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install system dependency — Tesseract OCR
+        run: sudo apt-get install -y tesseract-ocr --no-install-recommends
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt reportlab ruff pytest
+
+      - name: Lint with ruff
+        # ruff check: catches real code errors (unused imports, undefined
+        # names, etc.) and enforces import ordering.
+        # ruff format --check: fails if any file isn't formatted correctly,
+        # without actually changing files (that's the developer's job locally).
+        working-directory: ./rag-backend
+        run: |
+          ruff check .
+          ruff format --check .
+
+      - name: Run tests
+        # GROQ_API_KEY is set to a dummy value so the Settings object doesn't
+        # complain about a missing key — tests mock out all real Groq calls
+        # anyway, so the value is never actually used.
+        working-directory: ./rag-backend
+        env:
+          GROQ_API_KEY: dummy-key-for-ci
+          QDRANT_URL: http://localhost:6333
+        run: pytest -v
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # CD — runs only on push to main, and only if CI passes
+  # Uses a self-hosted runner installed on your local machine.
+  #
+  # HOW TO SET UP THE SELF-HOSTED RUNNER (one-time, ~5 minutes):
+  #   1. Go to your GitHub repo → Settings → Actions → Runners
+  #   2. Click "New self-hosted runner"
+  #   3. Follow the instructions for your OS (Linux/Mac/Windows)
+  #      — they give you a unique token and download/configure/run commands
+  #   4. Once the runner is active, it shows up as "Idle" in that page
+  #   The runner process needs to stay alive on your machine (or run as a
+  #   background service — the setup wizard offers to configure this).
+  # ──────────────────────────────────────────────────────────────────────────
+  deploy:
+    name: Deploy
+    needs: ci                    # only runs if the ci job above passes
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: self-hosted         # picks up by your local runner
+
+    steps:
+      - name: Checkout latest code
+        uses: actions/checkout@v4
+
+      - name: Pull latest images
+        # Pulls any updated base images (e.g. qdrant/qdrant) before
+        # rebuilding, so you're always running current versions.
+        run: docker compose pull
+
+      - name: Rebuild and restart services
+        # --build: rebuilds the app image from scratch if anything changed
+        # --detach: starts containers in the background (non-blocking)
+        # --remove-orphans: cleans up containers for services that were
+        #   removed from docker-compose.yml since the last deploy
+        run: docker compose up --build --detach --remove-orphans
+
+      - name: Wait for health check to pass
+        # Gives the app a few seconds to start, then polls /health until it
+        # gets a 200. Fails the deployment if it's still not up after 30s.
+        run: |
+          echo "Waiting for app to start..."
+          for i in $(seq 1 10); do
+            if curl -sf http://localhost:8000/health > /dev/null; then
+              echo "Health check passed"
+              exit 0
+            fi
+            echo "Attempt $i failed, retrying in 3s..."
+            sleep 3
+          done
+          echo "Health check failed after 30s"
+          docker compose logs
+          exit 1
+
+      - name: Print running containers
+        if: always()
+        run: docker compose ps
