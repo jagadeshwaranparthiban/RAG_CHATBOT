@@ -29,7 +29,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
 qdrant = QdrantClient(url=settings.qdrant_url)
 groq_client = Groq(api_key=settings.groq_api_key)
 
