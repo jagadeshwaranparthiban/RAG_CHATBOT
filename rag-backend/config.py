@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 # Loads variables from a .env file in the project root into the process
 # environment. Safe to call even if .env doesn't exist (e.g. in production
 # where real env vars are set another way).
+
 load_dotenv()
 
 class Settings:
